@@ -1,6 +1,7 @@
 import requests
 import json
 import os
+import sys
 
 from pypushdeer import PushDeer
 
@@ -69,30 +70,54 @@ if __name__ == '__main__':
         }
         
         for cookie in cookies:
-            checkin = requests.post(check_in_url, headers={'cookie': cookie, 'referer': referer, 'origin': origin,
-                                    'user-agent': useragent, 'content-type': 'application/json;charset=UTF-8'}, data=json.dumps(payload))
-            state = requests.get(status_url, headers={
-                                'cookie': cookie, 'referer': referer, 'origin': origin, 'user-agent': useragent})
+            cookie = cookie.strip()
+            if not cookie:
+                continue
 
-            message_status = ""
+            email = ""
             points = 0
-            message_days = ""
-            
-            
+            message_days = "error"
+            message_status = ""
+
+            try:
+                checkin = requests.post(check_in_url, headers={'cookie': cookie, 'referer': referer, 'origin': origin,
+                                        'user-agent': useragent, 'content-type': 'application/json;charset=UTF-8'},
+                                        data=json.dumps(payload), timeout=30)
+                state = requests.get(status_url, headers={
+                                    'cookie': cookie, 'referer': referer, 'origin': origin, 'user-agent': useragent},
+                                    timeout=30)
+            except requests.RequestException as e:
+                fail += 1
+                message_status = f"网络请求异常: {e}"
+                print("[FAIL] " + message_status)
+                context += "账号: 未知, P: 0, 剩余: error | " + message_status + " | "
+                continue
+
+            # 先校验登录态：cookie 失效时 status 接口返回 {"code":-2,"message":"没有权限"}，但 HTTP 码仍是 200
+            try:
+                state_result = state.json()
+            except ValueError:
+                state_result = {}
+            state_data = state_result.get('data') or {}
+            if not state_data:
+                fail += 1
+                err = state_result.get('message') or f"HTTP {state.status_code}"
+                message_status = f"Cookie 已失效（{err}），请重新登录 glados.cloud 并更新 COOKIES secret"
+                print("[FAIL] " + message_status)
+                context += "账号: 未知, P: 0, 剩余: error | " + message_status + " | "
+                continue
+
+            leftdays = int(float(state_data['leftDays']))
+            email = state_data.get('email', "")
+            message_days = f"{leftdays} 天"
+
             if checkin.status_code == 200:
                 # 解析返回的json数据
-                result = checkin.json()     
+                result = checkin.json()
                 # 获取签到结果
-                check_result = result.get('message')
-                points = result.get('points')
+                check_result = result.get('message') or ""
+                points = result.get('points') or 0
 
-                # 获取账号当前状态
-                result = state.json()
-                # 获取剩余时间
-                leftdays = int(float(result['data']['leftDays']))
-                # 获取账号email
-                email = result['data']['email']
-                
                 print(check_result)
                 if "Checkin! Got" in check_result:
                     success += 1
@@ -102,18 +127,12 @@ if __name__ == '__main__':
                     message_status = "重复签到，明天再来"
                 else:
                     fail += 1
-                    message_status = "签到失败，请检查..."
-
-                if leftdays is not None:
-                    message_days = f"{leftdays} 天"
-                else:
-                    message_days = "error"
+                    message_status = f"签到失败，接口返回: {check_result}"
             else:
-                email = ""
-                message_status = "签到请求URL失败, 请检查..."
-                message_days = "error"
+                fail += 1
+                message_status = f"签到请求URL失败, HTTP {checkin.status_code}"
 
-            context += "账号: " + email + ", P: " + str(points) +", 剩余: " + message_days + " | "
+            context += "账号: " + email + ", P: " + str(points) + ", 剩余: " + message_days + " | " + message_status + " | "
 
         # 推送内容 
         title = f'Glados, 成功{success},失败{fail},重复{repeats}'
@@ -123,8 +142,9 @@ if __name__ == '__main__':
         # 推送内容 
         title = f'# 未找到 cookies!'
 
-    print("sckey:", sckey)
-    print("cookies:", cookies)
+    # 脱敏输出：公开仓库的 Actions 日志任何人可见，不要把 secret 原值打出来
+    print("sckey:", "已配置" if sckey else "未配置")
+    print("cookies: 共", len([c for c in cookies if c.strip()]), "个账号(已脱敏)")
     
     # 推送消息
     # 未设置 sckey 则不进行推送
@@ -135,6 +155,10 @@ if __name__ == '__main__':
         # print(ret)
         # pushdeer = PushDeer(pushkey=sckey) 
         # pushdeer.send_text(title, desp=context)
+
+    # 有账号失败（含 cookie 失效）时以非零码退出，让 workflow 标红并触发 GitHub 的失败通知
+    if fail > 0:
+        sys.exit(1)
 
 
 
