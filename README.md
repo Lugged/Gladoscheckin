@@ -30,6 +30,8 @@
 
 - 多账号请在 `COOKIES` 中 添加多个 `cookies` 中间使用 `&`连接即可。（例如： `c1&c3&c3...`）
 
+> 建议按上面的方式整段复制 Cookie 值，不要只取其中一段。
+
 3. 手机推送（非必须）
 
 - 添加1个`repository secret`，命名为`SENDKEY`，其值对应 PushDeer key: ([获取地址](https://www.pushdeer.com/product.html))。
@@ -37,6 +39,18 @@
 ### **star**自己的仓库
 
 ![图片加载失败](imgs/4.png)
+
+## Cookie 失效排查
+
+签到失败时，若 Actions 日志里出现这一行：
+
+```
+[FAIL] Cookie 已失效（没有权限），请重新登录 glados.cloud 并更新 COOKIES secret
+```
+
+说明 `COOKIES` 里的登录态已经过期。GLaDOS 会定期让旧会话失效，重新登录或改密码也会立即让原有的 cookie 作废。按上面的方式重新复制一次 Cookie 值，更新 `COOKIES` secret 即可恢复。
+
+脚本现在会在鉴权失败时以非零码退出，让 workflow 标红，同时仍然推送通知，避免"静默失败"。
 
 ## 文件结构
 
