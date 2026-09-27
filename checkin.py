@@ -33,6 +33,27 @@ def sc_send(sendkey, title, desp='', options=None):
     return result
 
 
+def check_cookie_format(cookie):
+    """检查 cookie 是否包含当前 GLaDOS 认证所需的字段。
+
+    站点已把登录态从 koa:sess 迁移到 gld:sess，只有 koa:sess 会直接返回"没有权限"。
+    返回 (是否可用, 不可用时说明)
+    """
+    names = []
+    for seg in cookie.split(';'):
+        seg = seg.strip()
+        if '=' in seg:
+            names.append(seg.split('=', 1)[0].strip())
+
+    if 'gld:sess' in names and 'gld:sess.sig' in names:
+        return True, ""
+    if 'gld:sess' in names:
+        return False, "缺少 gld:sess.sig 签名段"
+    if 'koa:sess' in names:
+        return False, "只含旧版 koa:sess，GLaDOS 已改用 gld:sess 认证，请重新复制完整 Cookie"
+    return False, "未找到 gld:sess / gld:sess.sig，请确认复制的是完整的 Cookie 值"
+
+
 # data = {}
 # with open(os.path.join(os.path.dirname(__file__), '..', '.env'), 'r') as f:
 #     for line in f:
@@ -72,6 +93,15 @@ if __name__ == '__main__':
         for cookie in cookies:
             cookie = cookie.strip()
             if not cookie:
+                continue
+
+            # 先做格式预检，避免在鉴权失败时只得到一句含糊的"没有权限"
+            ok, why = check_cookie_format(cookie)
+            if not ok:
+                fail += 1
+                message_status = "Cookie 格式不正确: " + why
+                print("[FAIL] " + message_status)
+                context += "账号: 未知, P: 0, 剩余: error | " + message_status + " | "
                 continue
 
             email = ""

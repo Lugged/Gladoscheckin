@@ -24,7 +24,9 @@
 
 - 点击第一个选项卡后在`Request Headers`下找到`Cookie`，右键复制cookie的值即可
 
-  > 参考格式：koa:sess=eyJ1c2xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxAwMH0=; koa:sess.sig=xJkOxxxxxxxxxxxxxxxtnM;
+  > 参考格式：`koa:sess=eyJ1c2Vxxxxxxxxxxx; koa:sess.sig=xxxxxxxxxxxxxxx; gld:sess=gld_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; gld:sess.sig=xxxxxxxxxxxxxxxx`
+  >
+  > 其中 **`gld:sess` 和 `gld:sess.sig` 才是当前实际生效的认证字段**，缺任意一个都会返回"没有权限"。早期版本只使用 `koa:sess`，现已失效，务必复制当前的完整 Cookie。
 
 ![图片加载失败](imgs/3.png)
 
