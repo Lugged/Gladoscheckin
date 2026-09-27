@@ -4,9 +4,7 @@
 
 ### 注册一个GLaDOS的账号([注册地址](https://glados.cloud/))
 
-#### 我的邀请码：([LUGGED](https://glados.cloud/)) 
-
-#### 我的优惠码（9折）：([DEVILSTORE](https://0a58e-nv28s-6u3qv-33vmg.glados.space)) 
+#### 我的优惠码（9折）：([LUGGED](https://glados.cloud/)) 
 
 ### **Fork**本仓库
 
