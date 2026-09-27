@@ -149,10 +149,15 @@ if __name__ == '__main__':
                 points = result.get('points') or 0
 
                 print(check_result)
+                # 重复签到的文案站点改过：早期是 "Checkin Repeats!"，
+                # 现在是 "Today's observation logged. Return tomorrow for more points."
+                # 两种都要认，否则会被误判为失败
                 if "Checkin! Got" in check_result:
                     success += 1
                     message_status = "签到成功，会员点数 + " + str(points)
-                elif "Checkin Repeats!" in check_result:
+                elif ("Repeats" in check_result
+                      or "tomorrow" in check_result
+                      or "observation logged" in check_result):
                     repeats += 1
                     message_status = "重复签到，明天再来"
                 else:
