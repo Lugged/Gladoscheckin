@@ -81,7 +81,9 @@
 
 GLaDOS 会定期让旧会话失效，重新登录或改密码也会让原有 cookie 立即作废。失效时日志里会出现 `❌` 与 `没有权限` / `No permission`，推送标题的"失败"计数上升。重新复制一次 Cookie 值、更新 `GLADOS_COOKIES` secret 即可恢复。
 
-> 注意：脚本会依次对 `glados.cloud` 和 `railgun.info` 两个站点签到。若你在 railgun.info 没有账号，该站点会固定返回 `No permission`，这属于预期行为，不影响 glados.cloud 的签到与兑换。
+### 多域名说明
+
+脚本支持 `glados.cloud` 与 `railgun.info` 两个域名，两者账号数据共通。执行时会依次尝试，**任一域名签到成功即采用其结果并停止尝试其余域名**，因此每个账号只产生一条结果、推送里也只有一条消息；只有全部域名都失败才会记为失败。
 
 ## 声明
 

@@ -276,7 +276,7 @@ class API:
             data = response.json()
             code = data.get("code", -2)
             message = data.get("message", "无消息字段")
-            points = str(data.get("points", 0))
+            points = tidy_numbers(str(data.get("points", 0)))
 
             if code == CheckinStatus.SUCCESS.value:
                 self._log("info", LogEmoji.SUCCESS, f"{{ code : {code}, points : {points}, message : {message} }}")
@@ -360,7 +360,7 @@ class API:
         if response:
             data = response.json()
             code = data.get("code", -2)
-            message = data.get("message", "未知错误")
+            message = tidy_numbers(data.get("message", "未知错误"))
 
             if code == 0:
                 self._log("info", LogEmoji.SUCCESS, f"{{ code : {code}, message : {message} }}")
@@ -389,6 +389,15 @@ class CheckinResult:
     def to_dict(self) -> Dict[str, Union[str, CheckinStatus]]:
         result_dict = asdict(self)
         return result_dict
+
+
+def tidy_numbers(text: str) -> str:
+    """把接口返回里的长小数收敛为整数，例如 392.0000000000000000 -> 392"""
+    def repl(match: "re.Match") -> str:
+        value = float(match.group(0))
+        return str(int(value)) if value == int(value) else match.group(0)
+
+    return re.sub(r"\d+\.\d+", repl, str(text))
 
 
 def sc_send(sendkey: str, title: str, desp: str = "") -> bool:
@@ -468,31 +477,42 @@ class Checker:
             logger.info(f"{LogEmoji.COOKIE}[{cookie_idx}] {LogEmoji.DOMAIN}[{domain}] {emoji} {message}")
 
     def checkin_all(self):
-        """执行所有签到任务"""
+        """执行所有签到任务。
+
+        各域名的数据是共通的，因此对每个 Cookie 依次尝试域名，
+        任一域名签到成功(或已签到)即采用其结果，不再尝试其余域名，
+        保证每个账号只产生一条结果、推送里也只出现一条消息。
+        """
         cookie_count = len(self.config.cookies_list)
         domain_count = len(self.config.DOMAINS)
-        total_tasks = cookie_count * domain_count
-        task_idx = 0
 
-        logger.info(f"{LogEmoji.INFO} 共 {cookie_count} 个 Cookie, {domain_count} 个域名, 共 {total_tasks} 个任务")
+        logger.info(f"{LogEmoji.INFO} 共 {cookie_count} 个 Cookie, 可用域名 {domain_count} 个")
 
         for cookie_idx, cookie in enumerate(self.config.cookies_list, 1):
             logger.info(f"{LogEmoji.START} ========== 开始处理 Cookie {cookie_idx} ==========")
 
+            result = None
             for domain in self.config.DOMAINS:
-                task_idx += 1
-                logger.info(f"{LogEmoji.INFO} ----- 任务 {task_idx}/{total_tasks}: {LogEmoji.COOKIE}[{cookie_idx}] on {LogEmoji.DOMAIN}[{domain}] -----")
-
+                self._log(cookie_idx, domain, LogEmoji.PENDING, f"尝试在 {domain} 签到")
                 result = self._checkin_on_domain(cookie, cookie_idx, domain)
+
+                if result.code in (CheckinStatus.SUCCESS, CheckinStatus.REPEAT):
+                    self._log(cookie_idx, domain, LogEmoji.SUCCESS, f"{domain} 可用，采用该结果", force=True)
+                    break
+
+                self._log(cookie_idx, domain, LogEmoji.WARNING, f"{domain} 不可用({result.status})，尝试下一个域名", force=True)
+
+            # 全部域名都失败时，保留最后一个失败结果用于推送
+            if result is not None:
                 self.results.append(result)
 
                 result_message = f"结果: {result.status}"
-                if result.code == CheckinStatus.SUCCESS:
-                    if self.config.verbose:
-                        result_message = f"结果: {result.status}, 获得 {result.points} 积分, 剩余 {result.days}, 总 {result.points_total}, {result.exchange}"
-                    self._log(cookie_idx, domain, LogEmoji.SUCCESS, result_message, force=True)
-                else:
-                    self._log(cookie_idx, domain, LogEmoji.WARNING, result_message, force=True)
+                if result.code == CheckinStatus.SUCCESS and self.config.verbose:
+                    result_message = (
+                        f"结果: {result.status}, 获得 {result.points} 积分, 剩余 {result.days}, "
+                        f"总 {result.points_total}, {result.exchange}"
+                    )
+                self._log(cookie_idx, result.domain, LogEmoji.SUCCESS, result_message, force=True)
 
     def _checkin_on_domain(self, cookie: str, cookie_idx: int, domain: str) -> CheckinResult:
         result = CheckinResult(cookie_idx, domain)
