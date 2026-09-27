@@ -1,6 +1,7 @@
 import requests
 import json
 import os
+import re
 import logging
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Union
@@ -390,6 +391,30 @@ class CheckinResult:
         return result_dict
 
 
+def sc_send(sendkey: str, title: str, desp: str = "") -> bool:
+    """通过 Server酱 推送，兼容 Server酱 与 Server酱 Turbo 两种 key 格式"""
+    if sendkey.startswith("sctp"):
+        match = re.match(r"sctp(\d+)t", sendkey)
+        if not match:
+            raise ValueError("Invalid sendkey format for sctp")
+        url = f"https://{match.group(1)}.push.ft07.com/send/{sendkey}.send"
+    else:
+        url = f"https://sctapi.ftqq.com/{sendkey}.send"
+
+    response = requests.post(
+        url,
+        json={"title": title, "desp": desp},
+        headers={"Content-Type": "application/json;charset=utf-8"},
+        timeout=30,
+    )
+    response.raise_for_status()
+    result = response.json() if response.content else {}
+    # Server酱 正常返回 {"code": 0, ...}；key 失效时 code 非 0
+    if isinstance(result, dict) and result.get("code") not in (None, 0):
+        raise RuntimeError(f"Server酱 返回异常: {result}")
+    return True
+
+
 class PushService:
     """推送服务"""
 
@@ -397,19 +422,36 @@ class PushService:
         self.config = config
 
     def send(self, title: str, content: str) -> bool:
-        """发送推送"""
+        """发送推送。PushDeer key 形如 PDUxxxxxTxxxxx，其余按 Server酱 处理"""
         if not self.config.push_key:
             logger.info(f"{LogEmoji.WARNING} 未设置推送密钥，跳过推送通知。")
             return False
 
-        try:
-            pushdeer = PushDeer(pushkey=self.config.push_key)
-            pushdeer.send_text(title, desp=content)
-            logger.info(f"{LogEmoji.SUCCESS} 推送通知发送成功。")
-            return True
-        except Exception as e:
-            logger.error(f"{LogEmoji.ERROR} 发送推送通知失败: {e}")
-            return False
+        key = self.config.push_key
+        # 先按 key 格式分派，失败时再尝试另一种渠道
+        if key.upper().startswith("PDU"):
+            first, second = self._pushdeer, self._serverchan
+        else:
+            first, second = self._serverchan, self._pushdeer
+
+        for sender in (first, second):
+            try:
+                sender(key, title, content)
+                logger.info(f"{LogEmoji.SUCCESS} 推送通知发送成功。")
+                return True
+            except Exception as e:
+                logger.warning(f"{LogEmoji.WARNING} {sender.__name__} 推送失败: {e}")
+
+        logger.error(f"{LogEmoji.ERROR} 两种推送渠道均发送失败，请检查 PUSHDEER_SENDKEY 是否有效。")
+        return False
+
+    @staticmethod
+    def _pushdeer(key: str, title: str, content: str) -> None:
+        PushDeer(pushkey=key).send_text(title, desp=content)
+
+    @staticmethod
+    def _serverchan(key: str, title: str, content: str) -> None:
+        sc_send(key, title, content)
 
 
 class Checker:
